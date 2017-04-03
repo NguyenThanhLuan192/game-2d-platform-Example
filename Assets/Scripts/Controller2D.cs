@@ -14,6 +14,7 @@ public class Controller2D : MonoBehaviour
 
     BoxCollider2D collider;
     RaycastOrigin raycastOrigin;
+    public CollisionInfo collision;
 
     void Start()
     {
@@ -24,12 +25,55 @@ public class Controller2D : MonoBehaviour
     public void Move(Vector3 velocity)
     {
         UpdateRaycastOrigin();
-        VerticalCollisions(ref velocity);
+        collision.Reset();
+        if (velocity.x != 0)
+            HorizontalCollisions(ref velocity);
+
+        if (velocity.y != 0)
+            VerticalCo1llisions(ref velocity);
 
         transform.Translate(velocity);
     }
 
-    void VerticalCollisions(ref Vector3 velocity)
+    /// <summary>
+    /// Horizontals the collisions.
+    /// va chạm ngang
+    /// </summary>
+    /// <param name="velocity">Velocity.</param>
+    void HorizontalCollisions(ref Vector3 velocity)
+    {
+        float directionX = Mathf.Sign(velocity.x);
+        float rayLength = Mathf.Abs(velocity.x) + skinWidth;
+
+
+        for (int i = 0; i < horizontalRayCount; i++)
+        {
+            // gốc của tia raycast
+            Vector2 rayOrigin = directionX == -1 ? raycastOrigin.bottomLeft : raycastOrigin.bottomRight;
+            rayOrigin += Vector2.up * (horizontalRaySpacing * i);
+            // tạo tia raycast 
+            RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.right * directionX, rayLength, collisionMask);
+            Debug.DrawRay(rayOrigin, Vector2.right * directionX * rayLength, Color.red);
+
+            if (hit)
+            {
+                // tính toán lại vận tốc
+                velocity.x = (hit.distance - skinWidth) * directionX;
+                // tính lại độ dài tia raycast
+                rayLength = hit.distance;
+
+                collision.left = directionX == -1;
+                collision.right = directionX == 1;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verticals the co1llisions.
+    /// va chạm đứng
+    /// </summary>
+    /// <param name="velocity">Velocity.</param>
+    void VerticalCo1llisions(ref Vector3 velocity)
     {
         float directionY = Mathf.Sign(velocity.y);
         float rayLength = Mathf.Abs(velocity.y) + skinWidth;
@@ -37,15 +81,22 @@ public class Controller2D : MonoBehaviour
 
         for (int i = 0; i < verticalRayCount; i++)
         {
+            // gốc của tia raycast
             Vector2 rayOrigin = directionY == -1 ? raycastOrigin.bottomLeft : raycastOrigin.topLeft;
             rayOrigin += Vector2.right * (verticalRaySpacing * i + velocity.x);
+            // tạo tia raycast 
             RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.up * directionY, rayLength, collisionMask);
-            Debug.DrawRay(raycastOrigin.bottomLeft + Vector2.right * verticalRaySpacing * i, Vector2.up * -2, Color.red);
+            Debug.DrawRay(rayOrigin, Vector2.up * directionY * rayLength, Color.red);
 
             if (hit)
             {
+                // tính toán lại vận tốc
                 velocity.y = (hit.distance - skinWidth) * directionY;
+                // tính lại độ dài tia raycast
                 rayLength = hit.distance;
+            
+                collision.above = directionY == 1;
+                collision.below = directionY == -1;
             }
         }
     }
@@ -77,5 +128,17 @@ public class Controller2D : MonoBehaviour
     {
         public Vector2 topLeft, topRight;
         public Vector2 bottomLeft, bottomRight;
+    }
+
+    public struct CollisionInfo
+    {
+        public bool above, below;
+        public bool left, right;
+
+        public void Reset()
+        {
+            above = below = false;
+            left = right = false;
+        }
     }
 }

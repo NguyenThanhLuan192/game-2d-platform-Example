@@ -3,33 +3,29 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(BoxCollider2D))]
-public class Controller2D : MonoBehaviour
+public class Controller2D : RaycastController
 {
-    public LayerMask collisionMask;
-    const float skinWidth = 0.015f;
-    public int horizontalRayCount = 4;
-    public int verticalRayCount = 4;
 
     float maxSlopeAngle = 80;
+    // góc xuống tối đa
+    float maxDescentAngle = 80;
 
-    float horizontalRaySpacing;
-    float verticalRaySpacing;
-
-    BoxCollider2D collider;
-    RaycastOrigin raycastOrigin;
     public CollisionInfo collision;
 
-    void Start()
+    public override void Start()
     {
-        this.collider = GetComponent<BoxCollider2D>();
-        CalculatorRaySpacing();
+        base.Start();
     }
 
-    public void Move(Vector3 velocity)
+    public void Move(Vector3 velocity, bool standingOnPlatform = false)
     {
         UpdateRaycastOrigin();
 
         collision.Reset();
+        collision.velocityOld = velocity;
+
+        if (velocity.x < 0)
+            DescendSlope(ref velocity);
 
         if (velocity.x != 0)
             HorizontalCollisions(ref velocity);
@@ -39,6 +35,12 @@ public class Controller2D : MonoBehaviour
         
         // tinh toan vi tri cua nhan vat theo van toc
         transform.Translate(velocity);
+
+        // kiem tra player co dung tren platform ko
+        if (standingOnPlatform)
+        {
+            collision.below = true;
+        }
     }
 
     /// <summary>
@@ -65,12 +67,25 @@ public class Controller2D : MonoBehaviour
 
             if (hit)
             {
+
+                if (hit.distance == 0)
+                {
+                    continue;
+                }
+
                 // tính góc của con dốc 
                 // hit.normal là vector pháp tuyến từ mặt phẳng
                 float slopeAngle = Vector2.Angle(hit.normal, Vector2.up); 
 
                 if (i == 0 && slopeAngle <= maxSlopeAngle)
                 {
+                    if (collision.descendingSlope)
+                    {
+                        collision.descendingSlope = false;
+                        velocity = collision.velocityOld;
+                    }
+
+
                     float distanceToSlopeStart = 0;
                     if (slopeAngle != collision.slopeAngleOld)
                     {
@@ -133,9 +148,32 @@ public class Controller2D : MonoBehaviour
                 collision.below = directionY == -1;
             }
         }
+
+        // kiểm tra khi đi dang di chuyển trên dốc có gặp 1 con dốc khác
+        if (collision.climbingSlope)
+        {
+            // hướng di chuyển
+            float directionX = Mathf.Sign(velocity.x);
+            // độ dài của tia
+            rayLength = Mathf.Abs(velocity.x) + skinWidth;
+            // gốc các tia
+            Vector2 originRay = (directionX == -1) ? raycastOrigin.bottomLeft : raycastOrigin.bottomRight + Vector2.up * directionX;
+            RaycastHit2D hit = Physics2D.Raycast(originRay, directionX * Vector2.right, rayLength, collisionMask);
+
+            if (hit)
+            {
+                float slopeAngle = Vector2.Angle(hit.normal, Vector2.up);
+                if (slopeAngle != collision.slopeAngle)
+                {
+                    velocity.x = (hit.distance - skinWidth) * directionX;
+                    collision.slopeAngle = slopeAngle;
+                }
+            }
+        }
     }
 
-    /// <summary>
+    /// <summary>'
+    /// xử lý khi di chuyển lên dốc
     /// tính vận tốc của nhân vật khi di chuyển trên dốc
     /// khi di chuyển lên dốc vận tốc sẽ chậm hơn khi đi trên mặt bằng
     /// </summary>
@@ -162,48 +200,54 @@ public class Controller2D : MonoBehaviour
     }
 
     /// <summary>
-    /// Updates the raycast origin.
-    /// các gốc tọa độ của tia ray cast
-    /// được tính toán trong update
+    /// Descends the slope.
+    /// xử lý khi di chuyển xuống dốc
+    /// góc xuống dốc
     /// </summary>
-    void UpdateRaycastOrigin()
+    /// <param name="velocity">Velocity.</param>
+    void DescendSlope(ref Vector3 velocity)
     {
-        Bounds bound = this.collider.bounds;
-        bound.Expand(skinWidth * -2);
+        // hướng di chuyển 
+        float directionX = Mathf.Sign(velocity.x);
+        // gốc của tia
+        Vector2 rayOrigin = (directionX == -1) ? raycastOrigin.bottomLeft : raycastOrigin.bottomRight;
+        RaycastHit2D hit = Physics2D.Raycast(rayOrigin, -Vector2.up, Mathf.Infinity, collisionMask);
 
-        raycastOrigin.bottomLeft = new Vector2(bound.min.x, bound.min.y);
-        raycastOrigin.bottomRight = new Vector2(bound.max.x, bound.min.y);
-        raycastOrigin.topLeft = new Vector2(bound.min.x, bound.max.y);
-        raycastOrigin.topRight = new Vector2(bound.max.x, bound.max.y);
+        if (hit)
+        {
+            float slopeAngle = Vector2.Angle(hit.normal, Vector2.up);
+            if (slopeAngle != 0 && slopeAngle <= maxDescentAngle)
+            {
+                if (Mathf.Sign(hit.normal.x) == directionX)
+                {
+                    if (hit.distance - skinWidth <= Mathf.Tan(slopeAngle * Mathf.Deg2Rad) * Mathf.Abs(velocity.x))
+                    {
+                        float moveDistance = Mathf.Abs(velocity.x);
+                        float descendVelocityY = Mathf.Sin(slopeAngle * Mathf.Deg2Rad) * moveDistance;
+
+                        velocity.x = Mathf.Cos(slopeAngle * Mathf.Deg2Rad) * moveDistance * Mathf.Sign(velocity.x);
+                        velocity.y -= descendVelocityY;
+
+                        collision.slopeAngle = slopeAngle;
+                        collision.descendingSlope = false;
+                        collision.below = true;
+                    }
+                }
+            }
+        }
     }
 
-    /// <summary>
-    /// Calculators the ray spacing.
-    /// tính khoảng cách giữa các tia ray cast
-    /// </summary>
-    void CalculatorRaySpacing()
-    {
-        Bounds bound = this.collider.bounds;
-        bound.Expand(skinWidth * -2);
 
-        horizontalRayCount = Mathf.Clamp(horizontalRayCount, 2, int.MaxValue);
-        verticalRayCount = Mathf.Clamp(verticalRayCount, 2, int.MaxValue);
-
-        horizontalRaySpacing = bound.size.y / (horizontalRayCount - 1);
-        verticalRaySpacing = bound.size.x / (verticalRayCount - 1);
-    }
-
-    struct RaycastOrigin
-    {
-        public Vector2 topLeft, topRight;
-        public Vector2 bottomLeft, bottomRight;
-    }
 
     public struct CollisionInfo
     {
         public bool above, below;
         public bool left, right;
         public bool climbingSlope;
+
+        public bool descendingSlope;
+
+        public Vector3 velocityOld;
 
         public float slopeAngle, slopeAngleOld;
 
@@ -212,6 +256,8 @@ public class Controller2D : MonoBehaviour
             above = below = false;
             left = right = false;
             climbingSlope = false;
+            descendingSlope = false;
+
             slopeAngle = slopeAngleOld;
             slopeAngleOld = 0;
         }

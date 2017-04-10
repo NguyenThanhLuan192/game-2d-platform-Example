@@ -15,6 +15,7 @@ public class Controller2D : RaycastController
     public override void Start()
     {
         base.Start();
+        collision.faceDir = 1;
     }
 
     public void Move(Vector3 velocity, bool standingOnPlatform = false)
@@ -24,11 +25,14 @@ public class Controller2D : RaycastController
         collision.Reset();
         collision.velocityOld = velocity;
 
+        // kiem tra huong di chuyen la trai hoac phai
+        if (velocity.x != 0)
+            collision.faceDir = (int)Mathf.Sign(velocity.x);
+
         if (velocity.x < 0)
             DescendSlope(ref velocity);
 
-        if (velocity.x != 0)
-            HorizontalCollisions(ref velocity);
+        HorizontalCollisions(ref velocity);
 
         if (velocity.y != 0)
             VerticalCo1llisions(ref velocity);
@@ -51,10 +55,15 @@ public class Controller2D : RaycastController
     void HorizontalCollisions(ref Vector3 velocity)
     {
         // huong theo truc X. mathf.sign tra ve -1 hoac 1
-        float directionX = Mathf.Sign(velocity.x);
+        float directionX = collision.faceDir;
         // độ dài của tia bằng vận tốc của vật thể + skinWidth
         float rayLength = Mathf.Abs(velocity.x) + skinWidth;
 
+        // gioi han tia rayLength
+        if (Mathf.Abs(velocity.x) < skinWidth)
+        {
+            rayLength = 2 * skinWidth;
+        }
 
         for (int i = 0; i < horizontalRayCount; i++)
         {
@@ -248,6 +257,8 @@ public class Controller2D : RaycastController
         public bool descendingSlope;
 
         public Vector3 velocityOld;
+
+        public float faceDir;
 
         public float slopeAngle, slopeAngleOld;
 

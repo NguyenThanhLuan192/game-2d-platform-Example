@@ -5,8 +5,21 @@ using UnityEngine;
 public class PlatformController : RaycastController
 {
 
-    public Vector3 move;
     public LayerMask passengerMask;
+    public Vector3[] localWayPoint;
+
+    Vector3[] globalWayPoint;
+    //toc do di chuyen cua platform
+    public float speed;
+    public float waitTime;
+
+    int formWayPointIndex;
+    float percentBetweenWaypoint;
+    float nextMoveTime;
+    [Range(0, 2)]
+    public float easeAmount;
+
+    public bool cyclic;
 
     public List<PassengerMovement> passengerMovement;
     public Dictionary<Transform,Controller2D> passengerDictionary = new Dictionary<Transform, Controller2D>();
@@ -14,13 +27,20 @@ public class PlatformController : RaycastController
     public override void Start()
     {
         base.Start();
+        // khởi tạo và gán giá trị cho globalWayPoint
+        globalWayPoint = new Vector3[localWayPoint.Length];
+        for (int i = 0; i < localWayPoint.Length; i++)
+        {
+            // chuyển tọa độ từ local sang global - được update theo tọa độ OnGirmos
+            globalWayPoint[i] = localWayPoint[i] + transform.position;
+        }
     }
 
     void Update()
     {
         UpdateRaycastOrigin();
 
-        var velovity = move * Time.deltaTime;
+        var velovity = CalculatorPlatformMovement();
 
         CalculatePassengerMovement(velovity);
 
@@ -30,6 +50,70 @@ public class PlatformController : RaycastController
         transform.Translate(velovity);
      
         MovePassengers(false);
+    }
+
+    /// <summary>
+    /// Ease the specified x.
+    /// cong thuc bien thien toa do tu 0 - > 1
+    ///  
+    /// y = x^a /(x^a + (1-x)^a)
+    /// 
+    /// </summary>
+    /// <param name="x">The x coordinate.</param>
+    float Ease(float x)
+    {
+        float a = easeAmount + 1;
+        return  Mathf.Pow(x, a) / (Mathf.Pow(x, a) + Mathf.Pow(1 - x, a));
+    }
+
+    Vector3 CalculatorPlatformMovement()
+    {
+        // mỗi khi đi đến 1 điểm thì sẽ dừng lại trong khoảng waitTime
+        if (Time.time < nextMoveTime)
+        {
+            return Vector3.zero;
+        }
+
+
+        formWayPointIndex %= globalWayPoint.Length;
+
+        // tinh chi so cua diem den tiep theo
+        int toWaypointIndex = (formWayPointIndex + 1) % globalWayPoint.Length;
+        // tinh khoang cach giua 2 diem
+        float distanceBetweenWaypoint = Vector3.Distance(globalWayPoint[formWayPointIndex], globalWayPoint[toWaypointIndex]);
+        // tinh quang duong di duoc giua 2 diem
+        percentBetweenWaypoint += Time.deltaTime * speed / distanceBetweenWaypoint;
+
+        percentBetweenWaypoint = Mathf.Clamp01(percentBetweenWaypoint);
+
+        float esaePercentBetweenWaypoint = Ease(percentBetweenWaypoint);
+
+        // tinh vi tri moi cua platform
+        Vector3 newPos = Vector3.Lerp(globalWayPoint[formWayPointIndex], globalWayPoint[toWaypointIndex], esaePercentBetweenWaypoint);
+        // tinh toan khi platform da di chuyen den dich
+        if (percentBetweenWaypoint >= 1)
+        {
+            // bat dau lai quang duong di chuyen
+            percentBetweenWaypoint = 0;
+            // tang chi so cua diem den
+            formWayPointIndex++;
+
+            if (!cyclic)
+            {
+                // neu chi so cua way point lon hon gia tri cua mang thi gan lai tu dau
+                if (formWayPointIndex >= globalWayPoint.Length - 1)
+                {
+                    formWayPointIndex = 0;
+                    // dao thu tu cua 1 mang
+                    System.Array.Reverse(globalWayPoint);
+                }
+            }
+
+            // tính thời gian tiếp tục để di chuyển
+            nextMoveTime = Time.time + waitTime;
+        }
+
+        return newPos - transform.position;
     }
 
     void MovePassengers(bool beforeMovePassenger)
@@ -177,6 +261,24 @@ public class PlatformController : RaycastController
             velocity = _velocity;
             standingOnPlatform = _standingOnPlatform;
             moveBeforePlatform = _moveBeforePlatform;
+        }
+    }
+
+
+    void OnDrawGizmos()
+    {
+        if (localWayPoint != null)
+        {
+            Gizmos.color = Color.red;
+            // độ dài của tia drawline
+            float size = 0.3f;
+            for (int i = 0; i < localWayPoint.Length; i++)
+            {
+                // lấy tọa độ để vẽ trên edior
+                Vector3 globalWaypointPos = (Application.isPlaying) ? globalWayPoint[i] : localWayPoint[i] + transform.position;
+                Gizmos.DrawLine(globalWaypointPos - Vector3.up * size, globalWaypointPos + Vector3.up * size);
+                Gizmos.DrawLine(globalWaypointPos - Vector3.left * size, globalWaypointPos + Vector3.left * size);
+            }
         }
     }
 

@@ -125,7 +125,6 @@ public class PlatformController : RaycastController
                 passengerDictionary.Add(passenger.transform, passenger.transform.GetComponent<Controller2D>());
             }
 
-
             if (passenger.moveBeforePlatform == beforeMovePassenger)
             {
                 passengerDictionary[passenger.transform].Move(passenger.velocity, passenger.standingOnPlatform);
@@ -161,7 +160,7 @@ public class PlatformController : RaycastController
 
                 RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.up * directionY, raylength, passengerMask);
     
-                if (hit)
+                if (hit && hit.distance != 0)
                 {
                     if (!movedPassenger.Contains(hit.transform))
                     {
@@ -197,7 +196,7 @@ public class PlatformController : RaycastController
                 RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.right * directionX, rayLength, passengerMask);
                 Debug.DrawRay(rayOrigin, Vector2.right * directionX * rayLength, Color.red);
 
-                if (hit)
+                if (hit && hit.distance != 0)
                 {
 
                     if (!movedPassenger.Contains(hit.transform))
@@ -228,7 +227,7 @@ public class PlatformController : RaycastController
 
                 RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.up, raylength, passengerMask);
 
-                if (hit)
+                if (hit && hit.distance != 0)
                 {
                     if (!movedPassenger.Contains(hit.transform))
                     {

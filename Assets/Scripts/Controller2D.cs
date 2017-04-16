@@ -6,11 +6,11 @@ using UnityEngine;
 public class Controller2D : RaycastController
 {
 
-    float maxSlopeAngle = 80;
-    // góc xuống tối đa
-    float maxDescentAngle = 80;
+    public float maxSlopeAngle = 80;
 
     public CollisionInfo collision;
+    [HideInInspector]
+    public Vector2 playerInput;
 
     public override void Start()
     {
@@ -18,27 +18,34 @@ public class Controller2D : RaycastController
         collision.faceDir = 1;
     }
 
-    public void Move(Vector3 velocity, bool standingOnPlatform = false)
+    public void Move(Vector2 moveAmout, bool standingOnPlatform)
+    {
+        Move(moveAmout, Vector2.zero, standingOnPlatform);
+    }
+
+    public void Move(Vector2 moveAmout, Vector2 input, bool standingOnPlatform = false)
     {
         UpdateRaycastOrigin();
 
         collision.Reset();
-        collision.velocityOld = velocity;
+        collision.moveAmoutOld = moveAmout;
+
+        playerInput = input;
 
         // kiem tra huong di chuyen la trai hoac phai
-        if (velocity.x != 0)
-            collision.faceDir = (int)Mathf.Sign(velocity.x);
+        if (moveAmout.x != 0)
+            collision.faceDir = (int)Mathf.Sign(moveAmout.x);
 
-        if (velocity.x < 0)
-            DescendSlope(ref velocity);
+        if (moveAmout.x < 0)
+            DescendSlope(ref moveAmout);
 
-        HorizontalCollisions(ref velocity);
+        HorizontalCollisions(ref moveAmout);
 
-        if (velocity.y != 0)
-            VerticalCo1llisions(ref velocity);
+        if (moveAmout.y != 0)
+            VerticalCo1llisions(ref moveAmout);
         
         // tinh toan vi tri cua nhan vat theo van toc
-        transform.Translate(velocity);
+        transform.Translate(moveAmout);
 
         // kiem tra player co dung tren platform ko
         if (standingOnPlatform)
@@ -52,7 +59,7 @@ public class Controller2D : RaycastController
     /// va chạm ngang
     /// </summary>
     /// <param name="velocity">Velocity.</param>
-    void HorizontalCollisions(ref Vector3 velocity)
+    void HorizontalCollisions(ref Vector2 velocity)
     {
         // huong theo truc X. mathf.sign tra ve -1 hoac 1
         float directionX = collision.faceDir;
@@ -72,7 +79,7 @@ public class Controller2D : RaycastController
             rayOrigin += Vector2.up * (horizontalRaySpacing * i);
             // tạo tia raycast 
             RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.right * directionX, rayLength, collisionMask);
-            Debug.DrawRay(rayOrigin, Vector2.right * directionX * rayLength, Color.red);
+            Debug.DrawRay(rayOrigin, Vector2.right * directionX, Color.red);
 
             if (hit)
             {
@@ -91,7 +98,7 @@ public class Controller2D : RaycastController
                     if (collision.descendingSlope)
                     {
                         collision.descendingSlope = false;
-                        velocity = collision.velocityOld;
+                        velocity = collision.moveAmoutOld;
                     }
 
 
@@ -101,7 +108,7 @@ public class Controller2D : RaycastController
                         distanceToSlopeStart = hit.distance - skinWidth;
                         velocity.x -= distanceToSlopeStart * directionX;
                     }
-                    ClimpSlope(ref velocity, slopeAngle); 
+                    ClimpSlope(ref velocity, slopeAngle, hit.normal); 
                     velocity.x += distanceToSlopeStart * directionX;
                 }
 
@@ -124,7 +131,7 @@ public class Controller2D : RaycastController
     /// va chạm đứng
     /// </summary>
     /// <param name="velocity">Velocity.</param>
-    void VerticalCo1llisions(ref Vector3 velocity)
+    void VerticalCo1llisions(ref Vector2 velocity)
     {
         // hướng di chuyển của nhân vật =1 đi lên; =-1 đi xuống
         float directionY = Mathf.Sign(velocity.y);
@@ -139,10 +146,33 @@ public class Controller2D : RaycastController
             rayOrigin += Vector2.right * (verticalRaySpacing * i + velocity.x);
             // tạo tia raycast 
             RaycastHit2D hit = Physics2D.Raycast(rayOrigin, Vector2.up * directionY, rayLength, collisionMask);
-            Debug.DrawRay(rayOrigin, Vector2.up * directionY * rayLength, Color.red);
+            Debug.DrawRay(rayOrigin, Vector2.up * directionY, Color.red);
 
             if (hit)
             {
+                // khi player nhay len va gap platform co the nhay qua thi se ko tinh toan phan van toc
+                if (hit.collider.CompareTag("Throught"))
+                {
+                    if (directionY == 1 && hit.distance == 0)
+                    {
+                        // nhay ra khoi vong lap va tiep tuc vong lap
+                        continue;
+                    }
+
+                    if (collision.fallingThroughPlatform)
+                    {
+                        continue;
+                    }
+
+                    if (playerInput.y == -1)
+                    {
+                        collision.fallingThroughPlatform = true;
+                        Invoke("ResetFallingThroughPlatform", 0.5f);
+                        continue;
+                    }
+                }
+
+
                 // tính toán lại vận tốc
                 velocity.y = (hit.distance - skinWidth) * directionY;
                 // tính lại độ dài tia raycast
@@ -176,6 +206,7 @@ public class Controller2D : RaycastController
                 {
                     velocity.x = (hit.distance - skinWidth) * directionX;
                     collision.slopeAngle = slopeAngle;
+                    collision.slopeNormal = hit.normal;
                 }
             }
         }
@@ -188,7 +219,7 @@ public class Controller2D : RaycastController
     /// </summary>
     /// <param name="velocity">Velocity.</param>
     /// <param name="slopeAngle">Slope angle.</param>
-    void ClimpSlope(ref Vector3 velocity, float slopeAngle)
+    void ClimpSlope(ref Vector2 velocity, float slopeAngle, Vector2 slopeNormal)
     {
         // vận tốc theo trục x
         float moveDistance = Mathf.Abs(velocity.x);
@@ -205,6 +236,7 @@ public class Controller2D : RaycastController
 
             collision.climbingSlope = true;
             collision.slopeAngle = slopeAngle;
+            collision.slopeNormal = slopeNormal;
         }
     }
 
@@ -214,53 +246,85 @@ public class Controller2D : RaycastController
     /// góc xuống dốc
     /// </summary>
     /// <param name="velocity">Velocity.</param>
-    void DescendSlope(ref Vector3 velocity)
+    void DescendSlope(ref Vector2 moveAmount)
     {
-        // hướng di chuyển 
-        float directionX = Mathf.Sign(velocity.x);
-        // gốc của tia
-        Vector2 rayOrigin = (directionX == -1) ? raycastOrigin.bottomLeft : raycastOrigin.bottomRight;
-        RaycastHit2D hit = Physics2D.Raycast(rayOrigin, -Vector2.up, Mathf.Infinity, collisionMask);
+        RaycastHit2D maxSlopeHitLeft = Physics2D.Raycast(raycastOrigin.bottomLeft, Vector2.down, Mathf.Abs(moveAmount.y) + skinWidth, collisionMask);
+        RaycastHit2D maxSlopeHitRight = Physics2D.Raycast(raycastOrigin.bottomRight, Vector2.down, Mathf.Abs(moveAmount.y) + skinWidth, collisionMask);
 
-        if (hit)
+        if (maxSlopeHitLeft ^ maxSlopeHitRight)
         {
-            float slopeAngle = Vector2.Angle(hit.normal, Vector2.up);
-            if (slopeAngle != 0 && slopeAngle <= maxDescentAngle)
+            SlideDownMaxSlope(maxSlopeHitLeft, ref moveAmount);
+            SlideDownMaxSlope(maxSlopeHitRight, ref moveAmount);
+        }
+
+        if (!collision.slidingDownMaxSlope)
+        {
+            // hướng di chuyển 
+            float directionX = Mathf.Sign(moveAmount.x);
+            // gốc của tia
+            Vector2 rayOrigin = (directionX == -1) ? raycastOrigin.bottomLeft : raycastOrigin.bottomRight;
+            RaycastHit2D hit = Physics2D.Raycast(rayOrigin, -Vector2.up, Mathf.Infinity, collisionMask);
+
+            if (hit)
             {
-                if (Mathf.Sign(hit.normal.x) == directionX)
+                float slopeAngle = Vector2.Angle(hit.normal, Vector2.up);
+                if (slopeAngle != 0 && slopeAngle <= maxSlopeAngle)
                 {
-                    if (hit.distance - skinWidth <= Mathf.Tan(slopeAngle * Mathf.Deg2Rad) * Mathf.Abs(velocity.x))
+                    if (Mathf.Sign(hit.normal.x) == directionX)
                     {
-                        float moveDistance = Mathf.Abs(velocity.x);
-                        float descendVelocityY = Mathf.Sin(slopeAngle * Mathf.Deg2Rad) * moveDistance;
+                        if (hit.distance - skinWidth <= Mathf.Tan(slopeAngle * Mathf.Deg2Rad) * Mathf.Abs(moveAmount.x))
+                        {
+                            float moveDistance = Mathf.Abs(moveAmount.x);
+                            float descendVelocityY = Mathf.Sin(slopeAngle * Mathf.Deg2Rad) * moveDistance;
 
-                        velocity.x = Mathf.Cos(slopeAngle * Mathf.Deg2Rad) * moveDistance * Mathf.Sign(velocity.x);
-                        velocity.y -= descendVelocityY;
+                            moveAmount.x = Mathf.Cos(slopeAngle * Mathf.Deg2Rad) * moveDistance * Mathf.Sign(moveAmount.x);
+                            moveAmount.y -= descendVelocityY;
 
-                        collision.slopeAngle = slopeAngle;
-                        collision.descendingSlope = false;
-                        collision.below = true;
+                            collision.slopeAngle = slopeAngle;
+                            collision.descendingSlope = false;
+                            collision.below = true;
+                        }
                     }
                 }
             }
         }
     }
 
+    void SlideDownMaxSlope(RaycastHit2D hit, ref Vector2 moveAmount)
+    {
+        if (hit)
+        {
+            float slopeAngle = Vector2.Angle(hit.normal, Vector2.up);
+            if (slopeAngle > maxSlopeAngle)
+            {
+                moveAmount.x = Mathf.Sign(hit.normal.x) * (Mathf.Abs(moveAmount.y) - hit.distance) / Mathf.Tan(slopeAngle * Mathf.Deg2Rad);
 
+                collision.slopeAngle = slopeAngle;
+                collision.slidingDownMaxSlope = true; 
+                collision.slopeNormal = hit.normal;
+            }
+        }
+    }
+
+    void ResetFallingThroughPlatform()
+    {
+        collision.fallingThroughPlatform = false;
+    }
 
     public struct CollisionInfo
     {
         public bool above, below;
         public bool left, right;
         public bool climbingSlope;
-
         public bool descendingSlope;
+        public bool slidingDownMaxSlope;
 
-        public Vector3 velocityOld;
-
-        public float faceDir;
 
         public float slopeAngle, slopeAngleOld;
+        public Vector2 moveAmoutOld;
+        public Vector2 slopeNormal;
+        public float faceDir;
+        public bool fallingThroughPlatform;
 
         public void Reset()
         {
@@ -268,7 +332,9 @@ public class Controller2D : RaycastController
             left = right = false;
             climbingSlope = false;
             descendingSlope = false;
+            slidingDownMaxSlope = false;
 
+            slopeNormal = Vector2.zero;
             slopeAngle = slopeAngleOld;
             slopeAngleOld = 0;
         }
